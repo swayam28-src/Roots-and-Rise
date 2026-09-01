@@ -2,5 +2,3 @@ gradio
 pandas
 plotly
 scikit-learn
-sentence-transformers
-torch

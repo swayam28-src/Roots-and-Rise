@@ -7,31 +7,19 @@ from datetime import datetime
 
 import plotly.express as px
 
-from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 # =========================================================
 # ROOTS & RISE
 # SIH 2026
 # ADVANCED AI CITIZEN GRIEVANCE PLATFORM
+# LIGHTWEIGHT RENDER-FREE VERSION
 # =========================================================
-
 
 DB_NAME = "roots_and_rise.db"
-
-
-# =========================================================
-# LOAD AI EMBEDDING MODEL
-# =========================================================
-
-print("🧠 Loading AI Embedding Model...")
-
-embedding_model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
-
-print("✅ AI Model Loaded Successfully!")
 
 
 # =========================================================
@@ -39,7 +27,6 @@ print("✅ AI Model Loaded Successfully!")
 # =========================================================
 
 def get_connection():
-
     return sqlite3.connect(
         DB_NAME,
         check_same_thread=False
@@ -49,47 +36,35 @@ def get_connection():
 def initialize_database():
 
     conn = get_connection()
-
     cursor = conn.cursor()
 
     cursor.execute("""
-
         CREATE TABLE IF NOT EXISTS complaints (
 
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             name TEXT,
-
             email TEXT,
-
             complaint TEXT,
-
             location TEXT,
 
             latitude REAL,
-
             longitude REAL,
 
             category TEXT,
-
             department TEXT,
-
             priority TEXT,
 
             duplicate_of TEXT,
-
             similarity REAL,
 
             status TEXT,
-
             created_at TEXT
 
         )
-
     """)
 
     conn.commit()
-
     conn.close()
 
 
@@ -103,68 +78,42 @@ initialize_database()
 def normalize_text(text):
 
     if not text:
-
         return ""
 
-    text = text.lower().strip()
-
+    text = str(text).lower().strip()
 
     replacements = {
 
         # English abbreviations
-
         "pls": "please",
-
         "plz": "please",
-
         "govt": "government",
-
         "rd": "road",
 
-
-        # Hinglish
-
+        # Hinglish normalization
         "pani nahi aa raha": "no water supply",
-
         "pani nahi hai": "water shortage",
-
         "road kharab hai": "road damaged",
-
         "sadak kharab hai": "road damaged",
-
         "bijli nahi hai": "electricity problem",
-
         "light nahi hai": "power cut",
-
         "kachra": "garbage",
-
         "ganda": "dirty",
-
         "naali": "drain",
-
         "bahut dangerous": "very dangerous",
-
         "jaldi": "urgent",
-
         "madad chahiye": "emergency help"
 
     }
 
-
     for old, new in replacements.items():
-
-        text = text.replace(
-            old,
-            new
-        )
-
+        text = text.replace(old, new)
 
     text = re.sub(
         r"\s+",
         " ",
         text
     )
-
 
     return text.strip()
 
@@ -178,89 +127,69 @@ CATEGORY_EXAMPLES = {
     "Road & Infrastructure": [
 
         "There is a pothole on the road.",
-
         "The road is damaged and unsafe.",
-
         "The bridge requires urgent repair.",
-
         "The footpath is broken.",
-
-        "Road construction is incomplete."
+        "Road construction is incomplete.",
+        "There are cracks on the road.",
+        "The street needs repair."
 
     ],
-
 
     "Water Supply": [
 
         "There is no drinking water supply.",
-
         "Water shortage in our locality.",
-
         "The water pipeline is damaged.",
-
         "No water is coming from the tap.",
-
-        "Residents are facing a water supply issue."
+        "Residents are facing a water supply issue.",
+        "There is a leakage in the water pipe."
 
     ],
-
 
     "Sanitation & Garbage": [
 
         "Garbage has not been collected.",
-
         "Waste is overflowing on the street.",
-
         "The area is dirty and unhygienic.",
-
         "Drainage and sewage are overflowing.",
-
-        "Cleaning services are not working."
+        "Cleaning services are not working.",
+        "Garbage is lying on the road.",
+        "The drain is blocked."
 
     ],
-
 
     "Electricity": [
 
         "There is a power cut.",
-
         "Electricity is not available.",
-
         "Street lights are not working.",
-
         "The transformer is damaged.",
-
-        "There is a dangerous electric wire."
+        "There is a dangerous electric wire.",
+        "There is no power supply.",
+        "Electric wires are exposed."
 
     ],
-
 
     "Public Safety": [
 
         "This area is dangerous and unsafe.",
-
         "There is a risk of accident.",
-
         "An emergency situation requires help.",
-
         "There is a serious public safety risk.",
-
-        "People may get injured."
+        "People may get injured.",
+        "This situation can cause an accident."
 
     ],
-
 
     "Health & Public Services": [
 
         "The hospital does not have medicine.",
-
         "Healthcare services are unavailable.",
-
         "The clinic requires more doctors.",
-
         "An ambulance is required.",
-
-        "There is a public health issue."
+        "There is a public health issue.",
+        "Medical services are not available."
 
     ]
 
@@ -294,155 +223,196 @@ DEPARTMENT_MAPPING = {
 
 
 # =========================================================
-# CREATE CATEGORY EMBEDDINGS
-# =========================================================
-
-print("📚 Preparing AI Category Knowledge Base...")
-
-CATEGORY_TEXTS = []
-
-CATEGORY_LABELS = []
-
-
-for category, examples in CATEGORY_EXAMPLES.items():
-
-    for example in examples:
-
-        CATEGORY_TEXTS.append(
-            example
-        )
-
-        CATEGORY_LABELS.append(
-            category
-        )
-
-
-CATEGORY_EMBEDDINGS = embedding_model.encode(
-
-    CATEGORY_TEXTS,
-
-    normalize_embeddings=True
-
-)
-
-
-print("✅ Category Knowledge Base Ready!")
-
-
-# =========================================================
-# AI CLASSIFICATION WITH CONFIDENCE
+# AI-STYLE LIGHTWEIGHT CLASSIFICATION
 # =========================================================
 
 def classify_complaint_ai(text):
 
-    normalized_text = normalize_text(
-        text
+    normalized_text = normalize_text(text)
+
+    if not normalized_text:
+        return (
+            "General Public Grievance",
+            "Citizen Grievance Department",
+            0.0
+        )
+
+    documents = [normalized_text]
+    labels = []
+
+    for category, examples in CATEGORY_EXAMPLES.items():
+
+        for example in examples:
+
+            documents.append(
+                normalize_text(example)
+            )
+
+            labels.append(category)
+
+    vectorizer = TfidfVectorizer(
+        stop_words="english",
+        ngram_range=(1, 2)
     )
 
+    try:
 
-    complaint_embedding = embedding_model.encode(
+        vectors = vectorizer.fit_transform(
+            documents
+        )
 
-        [normalized_text],
+        complaint_vector = vectors[0]
 
-        normalize_embeddings=True
+        example_vectors = vectors[1:]
 
-    )[0]
+        similarities = cosine_similarity(
+            complaint_vector,
+            example_vectors
+        )[0]
 
+    except ValueError:
 
-    similarity_scores = (
-
-        CATEGORY_EMBEDDINGS
-        @ complaint_embedding
-
-    )
-
+        return (
+            "General Public Grievance",
+            "Citizen Grievance Department",
+            0.0
+        )
 
     category_scores = {}
 
+    index = 0
 
-    for category in CATEGORY_EXAMPLES:
+    for category, examples in CATEGORY_EXAMPLES.items():
 
-        category_indices = [
+        scores = []
 
-            i
+        for _ in examples:
 
-            for i, label in enumerate(
-                CATEGORY_LABELS
+            scores.append(
+                similarities[index]
             )
 
-            if label == category
+            index += 1
 
-        ]
-
-
-        category_scores[category] = max(
-
-            float(
-                similarity_scores[i]
-            )
-
-            for i in category_indices
-
-        )
-
+        category_scores[category] = max(scores)
 
     best_category = max(
-
         category_scores,
-
         key=category_scores.get
-
     )
 
-
-    confidence = category_scores[
-        best_category
-    ]
-
+    confidence = float(
+        category_scores[best_category]
+    )
 
     confidence_percentage = round(
-
-        max(
-            0,
-            confidence
-        ) * 100,
-
+        max(0, confidence) * 100,
         2
-
     )
 
+    # Keyword assistance for stronger classification
+    keyword_mapping = {
 
-    # If confidence is very low
+        "Road & Infrastructure": [
+            "road",
+            "pothole",
+            "bridge",
+            "footpath",
+            "street",
+            "construction"
+        ],
 
-    if confidence < 0.25:
+        "Water Supply": [
+            "water",
+            "tap",
+            "pipeline",
+            "drinking"
+        ],
+
+        "Sanitation & Garbage": [
+            "garbage",
+            "waste",
+            "dirty",
+            "drain",
+            "sewage",
+            "cleaning"
+        ],
+
+        "Electricity": [
+            "electricity",
+            "power",
+            "light",
+            "transformer",
+            "wire"
+        ],
+
+        "Public Safety": [
+            "danger",
+            "accident",
+            "unsafe",
+            "emergency",
+            "injured"
+        ],
+
+        "Health & Public Services": [
+            "hospital",
+            "medicine",
+            "doctor",
+            "ambulance",
+            "health",
+            "clinic"
+        ]
+
+    }
+
+    keyword_scores = {}
+
+    for category, keywords in keyword_mapping.items():
+
+        score = sum(
+            1
+            for keyword in keywords
+            if keyword in normalized_text
+        )
+
+        keyword_scores[category] = score
+
+    best_keyword_category = max(
+        keyword_scores,
+        key=keyword_scores.get
+    )
+
+    if keyword_scores[best_keyword_category] > 0:
+
+        if (
+            keyword_scores[best_keyword_category] >= 1
+            and confidence < 0.45
+        ):
+
+            best_category = best_keyword_category
+
+            confidence_percentage = max(
+                confidence_percentage,
+                45.0
+            )
+
+    if confidence < 0.08 and max(
+        keyword_scores.values()
+    ) == 0:
 
         best_category = (
             "General Public Grievance"
         )
 
-        confidence_percentage = round(
-            confidence_percentage,
-            2
-        )
-
-
     department = DEPARTMENT_MAPPING.get(
-
         best_category,
-
         "Citizen Grievance Department"
-
     )
 
-
     return (
-
         best_category,
-
         department,
-
         confidence_percentage
-
     )
 
 
@@ -453,25 +423,16 @@ def classify_complaint_ai(text):
 HIGH_PRIORITY_WORDS = [
 
     "accident",
-
     "emergency",
-
     "danger",
-
     "dangerous",
-
     "fire",
-
     "injury",
-
+    "injured",
     "life threatening",
-
     "serious",
-
     "urgent",
-
     "critical",
-
     "exposed wire"
 
 ]
@@ -480,19 +441,12 @@ HIGH_PRIORITY_WORDS = [
 MEDIUM_PRIORITY_WORDS = [
 
     "problem",
-
     "not working",
-
     "overflow",
-
     "several days",
-
     "major",
-
     "blocked",
-
     "shortage",
-
     "damaged"
 
 ]
@@ -500,42 +454,25 @@ MEDIUM_PRIORITY_WORDS = [
 
 def calculate_priority(text):
 
-    text = normalize_text(
-        text
-    )
-
+    text = normalize_text(text)
 
     high_score = sum(
-
         1
-
         for word in HIGH_PRIORITY_WORDS
-
         if word in text
-
     )
-
 
     medium_score = sum(
-
         1
-
         for word in MEDIUM_PRIORITY_WORDS
-
         if word in text
-
     )
 
-
     if high_score >= 1:
-
         return "High"
 
-
     elif medium_score >= 1:
-
         return "Medium"
-
 
     return "Low"
 
@@ -548,154 +485,113 @@ def get_all_complaints():
 
     conn = get_connection()
 
-
     df = pd.read_sql_query(
-
         "SELECT * FROM complaints",
-
         conn
-
     )
 
-
     conn.close()
-
 
     return df
 
 
 # =========================================================
 # SEMANTIC DUPLICATE DETECTION
+# LIGHTWEIGHT TF-IDF VERSION
 # =========================================================
 
 def detect_semantic_duplicate(new_complaint):
 
     df = get_all_complaints()
 
-
     if df.empty:
 
         return (
-
             "No Duplicate",
-
             0.0
-
         )
 
-
     existing_complaints = (
-
         df["complaint"]
-
         .fillna("")
-
         .tolist()
-
     )
-
 
     normalized_existing = [
 
-        normalize_text(
-            complaint
-        )
+        normalize_text(complaint)
 
         for complaint in existing_complaints
 
     ]
 
-
     normalized_new = normalize_text(
-
         new_complaint
-
     )
-
 
     all_texts = (
-
         normalized_existing
-
-        + [
-
-            normalized_new
-
-        ]
-
+        + [normalized_new]
     )
 
+    try:
 
-    embeddings = embedding_model.encode(
-
-        all_texts,
-
-        normalize_embeddings=True
-
-    )
-
-
-    new_embedding = embeddings[-1]
-
-    existing_embeddings = embeddings[:-1]
-
-
-    similarity_scores = (
-
-        existing_embeddings
-
-        @ new_embedding
-
-    )
-
-
-    max_index = int(
-
-        similarity_scores.argmax()
-
-    )
-
-
-    max_similarity = float(
-
-        similarity_scores[max_index]
-
-    )
-
-
-    similarity_percentage = round(
-
-        max_similarity * 100,
-
-        2
-
-    )
-
-
-    if max_similarity >= 0.72:
-
-        duplicate_id = int(
-
-            df.iloc[max_index]["id"]
-
+        vectorizer = TfidfVectorizer(
+            stop_words="english",
+            ngram_range=(1, 2)
         )
 
+        vectors = vectorizer.fit_transform(
+            all_texts
+        )
+
+        new_vector = vectors[-1]
+
+        existing_vectors = vectors[:-1]
+
+        similarity_scores = cosine_similarity(
+            new_vector,
+            existing_vectors
+        )[0]
+
+    except ValueError:
+
+        return (
+            "No Duplicate",
+            0.0
+        )
+
+    max_index = int(
+        similarity_scores.argmax()
+    )
+
+    max_similarity = float(
+        similarity_scores[max_index]
+    )
+
+    similarity_percentage = round(
+        max_similarity * 100,
+        2
+    )
+
+    # Duplicate threshold
+    if max_similarity >= 0.55:
+
+        duplicate_id = int(
+            df.iloc[max_index]["id"]
+        )
 
         return (
 
-            f"Possible Semantic Duplicate of Complaint #{duplicate_id}",
+            f"Possible Duplicate of Complaint #{duplicate_id}",
 
             similarity_percentage
 
         )
 
-
     return (
-
         "No Duplicate",
-
         similarity_percentage
-
     )
 
 
@@ -706,36 +602,37 @@ def detect_semantic_duplicate(new_complaint):
 def detect_hotspots(df):
 
     if df.empty:
-
         return df
 
-
     valid_df = df.dropna(
-
         subset=[
             "latitude",
             "longitude"
         ]
-
     ).copy()
 
+    if valid_df.empty:
 
-    if len(valid_df) < 2:
-
-        valid_df["hotspot"] = "No Cluster"
+        valid_df["hotspot"] = pd.Series(
+            dtype="object"
+        )
 
         return valid_df
 
+    if len(valid_df) < 2:
+
+        valid_df["hotspot"] = (
+            "No Cluster"
+        )
+
+        return valid_df
 
     coordinates = valid_df[
-
         [
             "latitude",
             "longitude"
         ]
-
     ].values
-
 
     clustering = DBSCAN(
 
@@ -744,18 +641,12 @@ def detect_hotspots(df):
         min_samples=2
 
     ).fit(
-
         coordinates
-
     )
-
 
     valid_df["cluster_id"] = (
-
         clustering.labels_
-
     )
-
 
     valid_df["hotspot"] = (
 
@@ -774,7 +665,6 @@ def detect_hotspots(df):
         )
 
     )
-
 
     return valid_df
 
@@ -795,18 +685,13 @@ No complaint data is currently available.
 
 """
 
-
     insights = []
 
-
     high_count = len(
-
         df[
             df["priority"] == "High"
         ]
-
     )
-
 
     if high_count > 0:
 
@@ -816,19 +701,14 @@ No complaint data is currently available.
 
         )
 
-
     duplicate_count = len(
 
         df[
-
             df["duplicate_of"]
-
             != "No Duplicate"
-
         ]
 
     )
-
 
     if duplicate_count > 0:
 
@@ -837,7 +717,6 @@ No complaint data is currently available.
             f"🔁 **{duplicate_count} potential duplicate complaint(s) detected, reducing repeated processing.**"
 
         )
-
 
     top_category = (
 
@@ -849,7 +728,6 @@ No complaint data is currently available.
 
     )
 
-
     top_category_count = (
 
         df["category"]
@@ -860,18 +738,15 @@ No complaint data is currently available.
 
     )
 
-
     insights.append(
 
         f"📊 **Most reported issue: {top_category} ({top_category_count} complaints).**"
 
     )
 
-
     hotspot_df = detect_hotspots(
         df
     )
-
 
     if (
 
@@ -879,24 +754,16 @@ No complaint data is currently available.
 
         and
 
-        "hotspot"
-
-        in hotspot_df.columns
+        "hotspot" in hotspot_df.columns
 
     ):
 
-
         hotspots = hotspot_df[
-
             hotspot_df["hotspot"]
-
             == "Hotspot"
-
         ]
 
-
         if not hotspots.empty:
-
 
             hotspot_locations = (
 
@@ -912,7 +779,6 @@ No complaint data is currently available.
 
             )
 
-
             insights.append(
 
                 "🔥 **Potential geographic hotspot(s): "
@@ -923,7 +789,6 @@ No complaint data is currently available.
 
             )
 
-
     if not insights:
 
         insights.append(
@@ -931,7 +796,6 @@ No complaint data is currently available.
             "🟢 **Complaint patterns currently appear manageable.**"
 
         )
-
 
     return """
 
@@ -962,7 +826,6 @@ def submit_complaint(
 
 ):
 
-
     if (
 
         not name
@@ -972,7 +835,6 @@ def submit_complaint(
         or not location
 
     ):
-
 
         return """
 
@@ -986,13 +848,9 @@ Please provide:
 
 """
 
-
     normalized_complaint = normalize_text(
-
         complaint
-
     )
-
 
     (
 
@@ -1003,18 +861,12 @@ Please provide:
         confidence
 
     ) = classify_complaint_ai(
-
         normalized_complaint
-
     )
-
 
     priority = calculate_priority(
-
         normalized_complaint
-
     )
-
 
     (
 
@@ -1023,52 +875,33 @@ Please provide:
         similarity
 
     ) = detect_semantic_duplicate(
-
         normalized_complaint
-
     )
-
 
     created_at = datetime.now().strftime(
-
         "%d-%m-%Y %H:%M:%S"
-
     )
-
 
     conn = get_connection()
 
     cursor = conn.cursor()
-
 
     cursor.execute("""
 
         INSERT INTO complaints (
 
             name,
-
             email,
-
             complaint,
-
             location,
-
             latitude,
-
             longitude,
-
             category,
-
             department,
-
             priority,
-
             duplicate_of,
-
             similarity,
-
             status,
-
             created_at
 
         )
@@ -1078,58 +911,37 @@ Please provide:
     """, (
 
         name,
-
         email,
-
         complaint,
-
         location,
-
         latitude,
-
         longitude,
-
         category,
-
         department,
-
         priority,
-
         duplicate_of,
-
         similarity,
-
         "Submitted",
-
         created_at
 
     ))
 
-
     complaint_id = cursor.lastrowid
-
 
     conn.commit()
 
     conn.close()
 
-
     priority_icon = {
 
         "High": "🔴",
-
         "Medium": "🟠",
-
         "Low": "🟢"
 
     }.get(
-
         priority,
-
         "⚪"
-
     )
-
 
     return f"""
 
@@ -1157,11 +969,11 @@ Please provide:
 
 **{priority}**
 
-### 🔁 Semantic Duplicate Detection
+### 🔁 Duplicate Detection
 
 **{duplicate_of}**
 
-### 📊 Semantic Similarity Score
+### 📊 Similarity Score
 
 **{similarity}%**
 
@@ -1175,9 +987,8 @@ Please provide:
 
 **Submitted**
 
-> Your grievance was analyzed using
-> **AI semantic embeddings, intelligent classification,
-> priority scoring and duplicate detection.**
+> Your grievance was analyzed using intelligent text analysis,
+> classification, priority scoring and duplicate detection.
 
 """
 
@@ -1188,15 +999,11 @@ Please provide:
 
 def track_complaint(complaint_id):
 
-
     if complaint_id is None:
 
         return (
-
             "❌ Please enter a Complaint ID."
-
         )
-
 
     try:
 
@@ -1204,43 +1011,31 @@ def track_complaint(complaint_id):
             complaint_id
         )
 
-
     except (
 
         ValueError,
-
         TypeError
 
     ):
 
         return (
-
             "❌ Invalid Complaint ID."
-
         )
-
 
     conn = get_connection()
 
     cursor = conn.cursor()
-
 
     cursor.execute("""
 
         SELECT
 
             id,
-
             category,
-
             department,
-
             priority,
-
             status,
-
             location,
-
             created_at
 
         FROM complaints
@@ -1253,21 +1048,15 @@ def track_complaint(complaint_id):
 
     ))
 
-
     result = cursor.fetchone()
 
-
     conn.close()
-
 
     if not result:
 
         return (
-
             "❌ Complaint ID not found."
-
         )
-
 
     return f"""
 
@@ -1295,16 +1084,11 @@ def generate_dashboard():
 
     df = get_all_complaints()
 
-
     if df.empty:
 
-
         empty_chart = px.bar(
-
             title="No Complaint Data Available"
-
         )
-
 
         return (
 
@@ -1322,62 +1106,40 @@ def generate_dashboard():
 
         )
 
-
     total = len(df)
 
-
     high = len(
-
         df[
-            df["priority"]
-            == "High"
+            df["priority"] == "High"
         ]
-
     )
-
 
     medium = len(
-
         df[
-            df["priority"]
-            == "Medium"
+            df["priority"] == "Medium"
         ]
-
     )
-
 
     low = len(
-
         df[
-            df["priority"]
-            == "Low"
+            df["priority"] == "Low"
         ]
-
     )
-
 
     resolved = len(
-
         df[
-            df["status"]
-            == "Resolved"
+            df["status"] == "Resolved"
         ]
-
     )
-
 
     duplicate_count = len(
 
         df[
-
             df["duplicate_of"]
-
             != "No Duplicate"
-
         ]
 
     )
-
 
     stats = f"""
 
@@ -1391,16 +1153,14 @@ def generate_dashboard():
 | 🔴 High Priority | **{high}** |
 | 🟠 Medium Priority | **{medium}** |
 | 🟢 Low Priority | **{low}** |
-| 🔁 Semantic Duplicates | **{duplicate_count}** |
+| 🔁 Potential Duplicates | **{duplicate_count}** |
 | ✅ Resolved | **{resolved}** |
 
 """
 
-
     ai_insights = generate_ai_insights(
         df
     )
-
 
     category_counts = (
 
@@ -1412,7 +1172,6 @@ def generate_dashboard():
 
     )
 
-
     category_counts.columns = [
 
         "Category",
@@ -1420,7 +1179,6 @@ def generate_dashboard():
         "Complaints"
 
     ]
-
 
     category_chart = px.bar(
 
@@ -1434,7 +1192,6 @@ def generate_dashboard():
 
     )
 
-
     priority_counts = (
 
         df["priority"]
@@ -1445,7 +1202,6 @@ def generate_dashboard():
 
     )
 
-
     priority_counts.columns = [
 
         "Priority",
@@ -1453,7 +1209,6 @@ def generate_dashboard():
         "Complaints"
 
     ]
-
 
     priority_chart = px.pie(
 
@@ -1467,14 +1222,11 @@ def generate_dashboard():
 
     )
 
-
     hotspot_df = detect_hotspots(
         df
     )
 
-
     if hotspot_df.empty:
-
 
         map_chart = px.scatter_geo(
 
@@ -1482,9 +1234,7 @@ def generate_dashboard():
 
         )
 
-
     else:
-
 
         map_chart = px.scatter_geo(
 
@@ -1499,13 +1249,9 @@ def generate_dashboard():
             hover_data=[
 
                 "category",
-
                 "priority",
-
                 "department",
-
                 "status",
-
                 "hotspot"
 
             ],
@@ -1515,7 +1261,6 @@ def generate_dashboard():
             title="🔥 AI-Detected Geographic Hotspots"
 
         )
-
 
         map_chart.update_geos(
 
@@ -1527,71 +1272,47 @@ def generate_dashboard():
 
         )
 
-
     display_df = df.rename(columns={
 
-        "id":
-            "ID",
+        "id": "ID",
 
-        "name":
-            "Citizen",
+        "name": "Citizen",
 
-        "complaint":
-            "Complaint",
+        "complaint": "Complaint",
 
-        "location":
-            "Location",
+        "location": "Location",
 
-        "category":
-            "AI Category",
+        "category": "AI Category",
 
-        "department":
-            "Department",
+        "department": "Department",
 
-        "priority":
-            "Priority",
+        "priority": "Priority",
 
-        "duplicate_of":
-            "Duplicate Detection",
+        "duplicate_of": "Duplicate Detection",
 
-        "similarity":
-            "Similarity %",
+        "similarity": "Similarity %",
 
-        "status":
-            "Status",
+        "status": "Status",
 
-        "created_at":
-            "Submitted At"
+        "created_at": "Submitted At"
 
     })
-
 
     columns_to_show = [
 
         "ID",
-
         "Citizen",
-
         "Complaint",
-
         "Location",
-
         "AI Category",
-
         "Department",
-
         "Priority",
-
         "Duplicate Detection",
-
         "Similarity %",
-
         "Status",
-
         "Submitted At"
 
     ]
-
 
     display_df = display_df[
 
@@ -1606,7 +1327,6 @@ def generate_dashboard():
         ]
 
     ]
-
 
     return (
 
@@ -1637,15 +1357,11 @@ def update_status(
 
 ):
 
-
     if complaint_id is None:
 
         return (
-
             "❌ Please enter a Complaint ID."
-
         )
-
 
     try:
 
@@ -1653,26 +1369,20 @@ def update_status(
             complaint_id
         )
 
-
     except (
 
         ValueError,
-
         TypeError
 
     ):
 
         return (
-
             "❌ Invalid Complaint ID."
-
         )
-
 
     conn = get_connection()
 
     cursor = conn.cursor()
-
 
     cursor.execute("""
 
@@ -1690,24 +1400,17 @@ def update_status(
 
     ))
 
-
     conn.commit()
-
 
     updated = cursor.rowcount
 
-
     conn.close()
-
 
     if updated == 0:
 
         return (
-
             "❌ Complaint ID not found."
-
         )
-
 
     return f"""
 
@@ -1732,7 +1435,6 @@ with gr.Blocks(
 
 ) as app:
 
-
     gr.Markdown("""
 
 # 🌱 ROOTS & RISE
@@ -1745,11 +1447,11 @@ with gr.Blocks(
 
 ---
 
-### 🧠 Semantic AI Classification
+### 🧠 Intelligent Complaint Classification
 
 ### 🎯 Confidence Scoring
 
-### 🔁 Embedding-Based Duplicate Detection
+### 🔁 Duplicate Detection
 
 ### 🔥 Geographic Hotspot Detection
 
@@ -1766,7 +1468,6 @@ with gr.Blocks(
         # =============================================
 
         with gr.Tab("🏠 Home"):
-
 
             gr.Markdown("""
 
@@ -1786,15 +1487,15 @@ Common abbreviations and Hinglish phrases are normalized.
 
 ⬇️
 
-### 🧠 AI Semantic Classification
+### 🧠 Intelligent Classification
 
-Sentence embeddings identify the meaning of the complaint.
+The system analyzes complaint content and identifies the issue category.
 
 ⬇️
 
-### 🎯 AI Confidence Scoring
+### 🎯 Confidence Scoring
 
-The system calculates classification confidence.
+The system calculates how strongly a complaint matches a category.
 
 ⬇️
 
@@ -1804,15 +1505,15 @@ Urgent and high-risk grievances are prioritized.
 
 ⬇️
 
-### 🔁 Semantic Duplicate Detection
+### 🔁 Duplicate Detection
 
-Embedding similarity identifies complaints describing the same issue.
+Text similarity identifies potentially repeated complaints.
 
 ⬇️
 
 ### 🔥 Geographic Hotspot Detection
 
-AI clustering identifies areas with concentrated grievances.
+DBSCAN clustering identifies areas with concentrated grievances.
 
 ⬇️
 
@@ -1829,50 +1530,42 @@ Authorities receive structured and actionable insights.
 
         with gr.Tab("👤 Citizen Portal"):
 
-
             gr.Markdown("""
 
 # 👤 Submit a Citizen Grievance
 
-Our AI system will automatically analyze,
+Our intelligent system will automatically analyze,
 classify and route your complaint.
 
 """)
 
-
             with gr.Row():
 
-
                 with gr.Column():
-
 
                     citizen_name = gr.Textbox(
 
                         label="👤 Full Name *",
 
-                        placeholder=
-                        "Enter your full name"
+                        placeholder="Enter your full name"
 
                     )
-
 
                     citizen_email = gr.Textbox(
 
                         label="📧 Email Address",
 
-                        placeholder=
-                        "example@email.com"
+                        placeholder="example@email.com"
 
                     )
 
-
                     complaint_text = gr.Textbox(
 
-                        label=
-                        "📝 Describe Your Grievance *",
+                        label="📝 Describe Your Grievance *",
 
                         placeholder="""
 Example:
+
 There is a large pothole near the railway station.
 The road is dangerous and accidents may happen.
 Please repair it urgently.
@@ -1882,74 +1575,60 @@ Please repair it urgently.
 
                     )
 
-
                     citizen_location = gr.Textbox(
 
                         label="📍 Location *",
 
-                        placeholder=
-                        "Example: Thane Railway Station"
+                        placeholder="Example: Thane Railway Station"
 
                     )
 
 
                 with gr.Column():
 
-
                     gr.Markdown("""
 
-# 🤖 Advanced AI Processing
+# 🤖 Advanced Processing
 
-### 🧠 Semantic Classification
-
-Understands complaint meaning.
+### 🧠 Intelligent Classification
+Analyzes complaint content.
 
 ### 🎯 Confidence Score
-
-Measures AI classification confidence.
+Measures category matching strength.
 
 ### ⚡ Priority Intelligence
-
 Identifies urgent complaints.
 
 ### 🔁 Duplicate Detection
-
-Compares semantic embeddings.
+Compares complaint similarity.
 
 ### 🏛️ Smart Routing
-
-Routes complaints to departments.
+Routes complaints to relevant departments.
 
 ### 🔥 Hotspot Intelligence
-
 Uses geographic clustering.
 
 """)
 
-
                     latitude = gr.Number(
 
-                        label=
-                        "Latitude (Optional)",
+                        label="Latitude (Optional)",
 
                         value=None
 
                     )
-
 
                     longitude = gr.Number(
 
-                        label=
-                        "Longitude (Optional)",
+                        label="Longitude (Optional)",
 
                         value=None
 
                     )
 
-
                     submit_button = gr.Button(
 
-                        "🚀 Analyze with Advanced AI",
+                        "🚀 Analyze Complaint",
 
                         variant="primary",
 
@@ -1968,21 +1647,15 @@ Uses geographic clustering.
                 inputs=[
 
                     citizen_name,
-
                     citizen_email,
-
                     complaint_text,
-
                     citizen_location,
-
                     latitude,
-
                     longitude
 
                 ],
 
-                outputs=
-                submission_result
+                outputs=submission_result
 
             )
 
@@ -1993,7 +1666,6 @@ Uses geographic clustering.
 
         with gr.Tab("🔎 Track Complaint"):
 
-
             gr.Markdown("""
 
 # 🔎 Track Your Grievance
@@ -2002,19 +1674,15 @@ Enter your Complaint Reference ID.
 
 """)
 
-
             with gr.Row():
-
 
                 tracking_id = gr.Number(
 
-                    label=
-                    "Complaint ID",
+                    label="Complaint ID",
 
                     precision=0
 
                 )
-
 
                 track_button = gr.Button(
 
@@ -2030,14 +1698,11 @@ Enter your Complaint Reference ID.
 
             track_button.click(
 
-                fn=
-                track_complaint,
+                fn=track_complaint,
 
-                inputs=
-                tracking_id,
+                inputs=tracking_id,
 
-                outputs=
-                tracking_result
+                outputs=tracking_result
 
             )
 
@@ -2048,19 +1713,17 @@ Enter your Complaint Reference ID.
 
         with gr.Tab("🏛️ Authority Dashboard"):
 
-
             gr.Markdown("""
 
 # 🏛️ AI Governance Intelligence Center
 
-Monitor citizen grievances using AI-driven analytics.
+Monitor citizen grievances using intelligent analytics.
 
 """)
 
-
             refresh_button = gr.Button(
 
-                "🔄 Refresh AI Intelligence",
+                "🔄 Refresh Intelligence",
 
                 variant="primary",
 
@@ -2068,9 +1731,7 @@ Monitor citizen grievances using AI-driven analytics.
 
             )
 
-
             dashboard_stats = gr.Markdown()
-
 
             ai_insights_output = gr.Markdown()
 
@@ -2090,15 +1751,13 @@ Monitor citizen grievances using AI-driven analytics.
 
 
             gr.Markdown(
-                "## 📊 AI Classification Analytics"
+                "## 📊 Classification Analytics"
             )
 
 
             with gr.Row():
 
-
                 category_output = gr.Plot()
-
 
                 priority_output = gr.Plot()
 
@@ -2113,21 +1772,15 @@ Monitor citizen grievances using AI-driven analytics.
 
             refresh_button.click(
 
-                fn=
-                generate_dashboard,
+                fn=generate_dashboard,
 
                 outputs=[
 
                     dashboard_stats,
-
                     ai_insights_output,
-
                     complaints_table,
-
                     category_output,
-
                     priority_output,
-
                     map_output
 
                 ]
@@ -2149,11 +1802,9 @@ Update grievance status.
 
             with gr.Row():
 
-
                 status_complaint_id = gr.Number(
 
-                    label=
-                    "Complaint ID",
+                    label="Complaint ID",
 
                     precision=0
 
@@ -2165,20 +1816,15 @@ Update grievance status.
                     choices=[
 
                         "Submitted",
-
                         "Under Review",
-
                         "In Progress",
-
                         "Resolved"
 
                     ],
 
-                    value=
-                    "Under Review",
+                    value="Under Review",
 
-                    label=
-                    "New Status"
+                    label="New Status"
 
                 )
 
@@ -2197,50 +1843,44 @@ Update grievance status.
 
             status_button.click(
 
-                fn=
-                update_status,
+                fn=update_status,
 
                 inputs=[
 
                     status_complaint_id,
-
                     new_status
 
                 ],
 
-                outputs=
-                status_result
+                outputs=status_result
 
             )
 
 
         # =============================================
-        # TECHNOLOGY
+        # AI INNOVATION
         # =============================================
 
         with gr.Tab("💡 AI Innovation"):
 
-
             gr.Markdown("""
 
-# 💡 ROOTS & RISE — Advanced AI Innovation
+# 💡 ROOTS & RISE — AI Innovation
 
-## 🧠 Semantic Understanding
+## 🧠 Intelligent Text Understanding
 
-Traditional systems search for keywords.
-
-ROOTS & RISE uses **Sentence Embeddings**
-to understand the meaning of citizen grievances.
+ROOTS & RISE analyzes citizen grievances using
+**text similarity and natural language processing**.
 
 ---
 
-## 🔁 Semantic Duplicate Detection
+## 🔁 Duplicate Detection
 
-Two complaints may use completely different words
-while describing the same issue.
+Two complaints may use different words while
+describing a similar issue.
 
-Our AI compares complaint embeddings to identify
-potential duplicates.
+The system compares complaint text using
+**TF-IDF vectorization and cosine similarity**.
 
 ---
 
@@ -2266,9 +1906,9 @@ grievance regions.
 | Python | Backend |
 | Gradio | Web Interface |
 | SQLite | Database |
-| Sentence Transformers | Semantic AI |
-| all-MiniLM-L6-v2 | Text Embeddings |
-| Scikit-learn | AI & Clustering |
+| Scikit-learn | Machine Learning & Analytics |
+| TF-IDF | Text Feature Extraction |
+| Cosine Similarity | Complaint Similarity |
 | DBSCAN | Hotspot Detection |
 | Plotly | Data Visualization |
 | Pandas | Analytics |
@@ -2292,9 +1932,17 @@ if __name__ == "__main__":
 
     print("🌱 ROOTS & RISE READY!")
 
-    port = int(os.environ.get("PORT", 7865))
+    port = int(
+        os.environ.get(
+            "PORT",
+            7865
+        )
+    )
 
     app.launch(
+
         server_name="0.0.0.0",
+
         server_port=port
+
     )

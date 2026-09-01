@@ -2,6 +2,7 @@ import gradio as gr
 import pandas as pd
 import sqlite3
 import re
+import os
 from datetime import datetime
 
 import plotly.express as px
@@ -2291,4 +2292,9 @@ if __name__ == "__main__":
 
     print("🌱 ROOTS & RISE READY!")
 
-    app.launch()
+    port = int(os.environ.get("PORT", 7865))
+
+    app.launch(
+        server_name="0.0.0.0",
+        server_port=port
+    )
